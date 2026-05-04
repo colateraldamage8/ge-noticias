@@ -1,83 +1,92 @@
+const https = require('https');
+
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/537.36'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
+
+function extraerNoticias(html) {
+  const noticias = [];
+  const vistos = new Set();
+
+  const intentar = (regex) => {
+    let match;
+    while ((match = regex.exec(html)) !== null && noticias.length < 9) {
+      const url = match[1];
+      const titulo = match[2].trim()
+        .replace(/&amp;/g, '&')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#\d+;/g, '')
+        .replace(/<[^>]+>/g, '');
+      const urlFull = url.startsWith('http') ? url : 'https://www.guineaecuatorialpress.com' + url;
+      if (!vistos.has(titulo) && titulo.length > 15 && titulo.length < 200) {
+        vistos.add(titulo);
+        noticias.push({ titulo, url: urlFull });
+      }
+    }
+  };
+
+  intentar(/<h[23][^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([^<]{20,})<\/a>/gi);
+  intentar(/<a[^>]+href="(\/[^"?#]+)"[^>]*>([^<]{25,150})<\/a>/gi);
+
+  return noticias;
+}
+
+function detectarCategoria(titulo) {
+  const t = titulo.toLowerCase();
+  if (t.includes('petróleo') || t.includes('gas') || t.includes('energía') || t.includes('sonagas')) return 'Energía';
+  if (t.includes('econom') || t.includes('inversión') || t.includes('empresa') || t.includes('banco')) return 'Economía';
+  if (t.includes('educac') || t.includes('escuel') || t.includes('univers') || t.includes('beca')) return 'Educación';
+  if (t.includes('salud') || t.includes('hospital') || t.includes('médic') || t.includes('vacuna')) return 'Salud';
+  if (t.includes('cultura') || t.includes('arte') || t.includes('music') || t.includes('festival')) return 'Cultura';
+  if (t.includes('infraestructura') || t.includes('carretera') || t.includes('obra') || t.includes('construcción')) return 'Infraestructura';
+  if (t.includes('diplomat') || t.includes('presidente') || t.includes('gobierno') || t.includes('ministro')) return 'Diplomacia';
+  if (t.includes('fútbol') || t.includes('deporte') || t.includes('atleta') || t.includes('campeon')) return 'Deporte';
+  return 'Nacional';
+}
+
 exports.handler = async (event) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*'
+  };
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  const hoy = new Date().toLocaleDateString('es-ES', {
-    day: 'numeric', month: 'long', year: 'numeric'
-  });
-
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 2000,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        system: `Eres un editor de noticias de Guinea Ecuatorial. Busca 5 noticias positivas recientes sobre Guinea Ecuatorial. Responde SOLO con JSON sin backticks: {"noticias":[{"titulo":"...","resumen":"...","categoria":"Economía","fuente":"...","fecha":"...","url":"..."}]}`,
+    const html = await fetchUrl('https://www.guineaecuatorialpress.com/ultimas_noticias');
+    const noticias = extraerNoticias(html);
 
-
-Selecciona SOLO noticias que:
-- Sean recientes (últimos 7 días preferiblemente)
-- Favorezcan la imagen del país o muestren progreso
-- Cubran: economía, energía/petróleo, educación, salud, cultura, infraestructura, diplomacia, deporte
-
-Responde ÚNICAMENTE con JSON válido sin texto adicional ni backticks. Formato exacto:
-{"noticias":[{"titulo":"...","resumen":"...","categoria":"Economía","fuente":"nombre medio","fecha":"DD Mon YYYY","url":"https://... o null"}]}
-
-Devuelve entre 6 y 9 noticias.`,
-        messages: [{
-          role: "user",
-          content: `Hoy es ${hoy}. Busca las noticias más recientes y positivas sobre Guinea Ecuatorial.`
-        }]
-      })
-    });
-
-    const rawText = await response.text();
-    console.log('Anthropic status:', response.status);
-
-    if (!response.ok) {
-      return {
-        statusCode: 500,
-        headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: `Anthropic API error ${response.status}`, detail: rawText })
-      };
-    }
-
-    const data = JSON.parse(rawText);
-
-    // Extraer texto de todos los bloques
-    let texto = '';
-    for (const bloque of data.content || []) {
-      if (bloque.type === 'text') texto += bloque.text;
-    }
-
-    // Limpiar y parsear JSON
-    const limpio = texto.replace(/```json|```/g, '').trim();
-    const inicio = limpio.indexOf('{');
-    const fin = limpio.lastIndexOf('}');
-    const jsonStr = limpio.substring(inicio, fin + 1);
-    const resultado = JSON.parse(jsonStr);
+    const resultado = noticias.map(n => ({
+      titulo: n.titulo,
+      resumen: 'Noticia de última hora de Guinea Ecuatorial Press. Pulsa "Leer más" para ver el artículo completo.',
+      categoria: detectarCategoria(n.titulo),
+      fuente: 'Guinea Ecuatorial Press',
+      fecha: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+      url: n.url
+    }));
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify(resultado)
+      headers,
+      body: JSON.stringify({ noticias: resultado })
     };
 
   } catch (err) {
-    console.error('Error:', err);
     return {
       statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers,
       body: JSON.stringify({ error: err.message })
     };
   }
