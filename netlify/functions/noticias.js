@@ -19,7 +19,8 @@ exports.handler = async (event) => {
         model: "claude-sonnet-4-5",
         max_tokens: 2000,
         tools: [{ type: "web_search_20250305", name: "web_search" }],
-        system: `Eres un editor de noticias especializado en Guinea Ecuatorial. Busca noticias RECIENTES y POSITIVAS sobre Guinea Ecuatorial usando web search.
+        system: `Eres un editor de noticias de Guinea Ecuatorial. Busca 5 noticias positivas recientes sobre Guinea Ecuatorial. Responde SOLO con JSON sin backticks: {"noticias":[{"titulo":"...","resumen":"...","categoria":"Economía","fuente":"...","fecha":"...","url":"..."}]}`,
+
 
 Selecciona SOLO noticias que:
 - Sean recientes (últimos 7 días preferiblemente)
