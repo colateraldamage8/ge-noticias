@@ -393,11 +393,12 @@ main           { padding: 28px 16px 48px; }
     }
     cont.innerHTML = `<div class="grid-noticias">${lista.map((n, i) => `
       <article class="card" style="animation-delay:${i * 0.07}s">
+        ${n.imagen ? `<a href="${n.url}" target="_blank" rel="noopener"><img src="${n.imagen}" alt="${n.titulo}" style="width:100%;height:200px;object-fit:cover;display:block;border-radius:10px 10px 0 0;"></a>` : ''}
         <div class="card-top">
           <span class="etiq-cat ${n.categoria.toLowerCase()}">${n.categoria}</span>
           <h2 class="card-titulo">${n.titulo}</h2>
         </div>
-        <p class="card-resumen">${n.resumen}</p>
+        ${n.resumen ? `<p class="card-resumen">${n.resumen}</p>` : ''}
         <div class="card-pie">
           <div>
             <span class="card-fuente">${n.fuente || ''}</span>
@@ -442,25 +443,38 @@ main           { padding: 28px 16px 48px; }
       // Extraer noticias del HTML
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-      const enlaces = doc.querySelectorAll('h3 a[href*="/noticias/"]');
+      const enlaces = doc.querySelectorAll("h3 a[href*=\"/noticias/\"]");
 
       noticiasGuardadas = Array.from(enlaces).slice(0, 10).map(a => {
         const titulo = a.textContent.trim();
-        const url = 'https://www.guineaecuatorialpress.com' + a.getAttribute('href');
-        // Buscar resumen en el siguiente párrafo
+        const href = a.getAttribute('href');
+        const url = href.startsWith('http') ? href : 'https://www.guineaecuatorialpress.com' + href;
+        // Buscar imagen en el contenedor padre
         const h3 = a.closest('h3');
+        let imagen = '';
         let resumen = '';
         if (h3) {
+          // Buscar imagen antes del h3
+          const contenedor = h3.parentElement;
+          if (contenedor) {
+            const img = contenedor.querySelector('img');
+            if (img) {
+              const src = img.getAttribute('src') || '';
+              imagen = src.startsWith('http') ? src : 'https://www.guineaecuatorialpress.com' + src;
+            }
+          }
+          // Buscar resumen después del h3
           let el = h3.nextElementSibling;
           while (el && !resumen) {
             const txt = el.textContent.trim();
-            if (txt.length > 30 && !txt.includes('javascript')) resumen = txt.substring(0, 250);
+            if (txt.length > 30 && !txt.includes('javascript') && !txt.includes('mayo') && !txt.includes('abril')) resumen = txt.substring(0, 250);
             el = el.nextElementSibling;
           }
         }
         return {
           titulo,
-          resumen: resumen || 'Pulsa "Leer más" para ver el artículo completo.',
+          imagen,
+          resumen: resumen || '',
           categoria: detectarCategoria(titulo),
           fuente: 'Guinea Ecuatorial Press',
           fecha: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
