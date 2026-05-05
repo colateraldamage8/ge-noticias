@@ -346,6 +346,19 @@
 <script>
   let noticiasGuardadas = [];
 
+  function detectarCategoria(titulo) {
+    const t = titulo.toLowerCase();
+    if (t.includes('petróleo') || t.includes('gas') || t.includes('energía') || t.includes('sonagas')) return 'Energía';
+    if (t.includes('econom') || t.includes('inversión') || t.includes('empresa') || t.includes('trabajo') || t.includes('empleo')) return 'Economía';
+    if (t.includes('educac') || t.includes('escuel') || t.includes('univers') || t.includes('beca') || t.includes('docente')) return 'Educación';
+    if (t.includes('salud') || t.includes('hospital') || t.includes('médic') || t.includes('vacuna') || t.includes('seguro médico')) return 'Salud';
+    if (t.includes('cultura') || t.includes('arte') || t.includes('music') || t.includes('festival') || t.includes('prensa')) return 'Cultura';
+    if (t.includes('infraestructura') || t.includes('carretera') || t.includes('obra') || t.includes('construcción')) return 'Infraestructura';
+    if (t.includes('diplomat') || t.includes('presidente') || t.includes('jefe de estado') || t.includes('ministro') || t.includes('delegación') || t.includes('onu') || t.includes('gobierno')) return 'Diplomacia';
+    if (t.includes('fútbol') || t.includes('deporte') || t.includes('atleta') || t.includes('campeón') || t.includes('liga')) return 'Deporte';
+    return 'Nacional';
+  }
+
   function tick() {
     const d = new Date();
     document.getElementById('reloj').textContent =
@@ -407,14 +420,42 @@
       </div>`;
 
     try {
-      const res = await fetch('/api/noticias', { method: 'POST' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `Error HTTP ${res.status}` }));
-        throw new Error(err.detail || err.error || `Error ${res.status}`);
-      }
+      const target = 'https://www.guineaecuatorialpress.com/ultimas_noticias';
+      const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(target);
+      const res = await fetch(proxy);
+      if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+      const json = await res.json();
+      const html = json.contents;
 
-      const data = await res.json();
-      noticiasGuardadas = data.noticias || [];
+      // Extraer noticias del HTML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const enlaces = doc.querySelectorAll('h3 a[href*="/noticias/"]');
+
+      noticiasGuardadas = Array.from(enlaces).slice(0, 10).map(a => {
+        const titulo = a.textContent.trim();
+        const url = 'https://www.guineaecuatorialpress.com' + a.getAttribute('href');
+        // Buscar resumen en el siguiente párrafo
+        const h3 = a.closest('h3');
+        let resumen = '';
+        if (h3) {
+          let el = h3.nextElementSibling;
+          while (el && !resumen) {
+            const txt = el.textContent.trim();
+            if (txt.length > 30 && !txt.includes('javascript')) resumen = txt.substring(0, 250);
+            el = el.nextElementSibling;
+          }
+        }
+        return {
+          titulo,
+          resumen: resumen || 'Pulsa "Leer más" para ver el artículo completo.',
+          categoria: detectarCategoria(titulo),
+          fuente: 'Guinea Ecuatorial Press',
+          fecha: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
+          url
+        };
+      }).filter(n => n.titulo.length > 10);
+
       if (!noticiasGuardadas.length) throw new Error('No se encontraron noticias en este momento');
 
       mostrarNoticias(noticiasGuardadas);
